@@ -66,6 +66,7 @@ export function createGore(scene, groundY) {
       }
       drops.count = k; drops.instanceMatrix.needsUpdate = true;
     } else if (drops.count) drops.count = 0;
+    drops.visible = drops.count > 0;
     // pools spreading
     for (const s of S) if (s.grow && s.size < s.max) { s.size = Math.min(s.max, s.size + s.grow * dt * (1 - s.size / s.max * 0.7)); dirtySplats = true; }
     if (dirtySplats) {
@@ -76,6 +77,7 @@ export function createGore(scene, groundY) {
       });
       splats.count = S.length; splats.instanceMatrix.needsUpdate = true;
     }
+    splats.visible = splats.count > 0;
     // loose parts
     for (const pt of parts) {
       if (pt.rest) continue;
@@ -94,7 +96,7 @@ export function createGore(scene, groundY) {
   }
   function clear() {
     for (const d of D) d.on = false; live = 0; drops.count = 0;
-    S.length = 0; splats.count = 0;
+    S.length = 0; splats.count = 0; splats.visible = drops.visible = false;
     for (const pt of parts) { pt.o.parent?.remove(pt.o); }
     parts.length = 0;
   }

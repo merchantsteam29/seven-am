@@ -3,7 +3,6 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { W, Y4, buildWorld, updateWorld, collide, groundY, zoneOf, indoors, clearLine, setDoor } from './world.js';
 import { makePerson, setLayer } from './people.js';
 import { createGore } from './gore.js';
@@ -31,20 +30,24 @@ const persist = () => { store(SAVE, save); store(PKEY, progress); syncSave(); };
 const canvas = $('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
-renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap; renderer.shadowMap.autoUpdate = true;
+renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap; renderer.shadowMap.autoUpdate = false;
 const scene = new THREE.Scene(); scene.fog = new THREE.FogExp2(0x9ac4ec, 0.006);
 const camera = new THREE.PerspectiveCamera(settings.fov, innerWidth / innerHeight, 0.05, 170); camera.rotation.order = 'YXZ'; scene.add(camera);
 const FX = {
   uniforms: { tDiffuse: { value: null }, time: { value: 0 }, fear: { value: 0 }, bright: { value: 1 }, flash: { value: 0 }, red: { value: 0 }, black: { value: 0 }, drain: { value: 0 }, him: { value: 0 } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
   fragmentShader: `uniform sampler2D tDiffuse; uniform float time, fear, bright, flash, red, black, drain, him; varying vec2 vUv;
+    vec3 rrt(vec3 v){ vec3 a = v * (v + 0.0245786) - 0.000090537; vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081; return a / b; }
+    vec3 aces(vec3 c){ const mat3 I = mat3(vec3(0.59719, 0.07600, 0.02840), vec3(0.35458, 0.90834, 0.13383), vec3(0.04823, 0.01566, 0.83777)); const mat3 O = mat3(vec3(1.60475, -0.10208, -0.00327), vec3(-0.53108, 1.10813, -0.07276), vec3(-0.07367, -0.00605, 1.07602)); c *= 1.0 / 0.6; return clamp(O * rrt(I * c), 0.0, 1.0); }
+    vec3 srgb(vec3 c){ return mix(pow(c, vec3(0.41666)) * 1.055 - 0.055, c * 12.92, step(c, vec3(0.0031308))); }
     float rnd(vec2 c){ return fract(sin(dot(c, vec2(12.9898, 78.233))) * 43758.5453); }
     void main(){
       vec2 uv = vUv, c = uv - 0.5;
       uv.x += him * 0.006 * sin(uv.y * 30.0 + time * 4.0);
       float ab = 0.0008 + fear * 0.006 + him * 0.01;
       vec3 col = vec3(texture2D(tDiffuse, uv + c * ab).r, texture2D(tDiffuse, uv).g, texture2D(tDiffuse, uv - c * ab).b);
-      col = pow(max(col, 0.0), vec3(1.0 / bright));
+      col = srgb(aces(max(col, 0.0)));
+      col = pow(col, vec3(1.0 / bright));
       float l = dot(col, vec3(0.3, 0.59, 0.11));
       col = mix(col, vec3(l) * vec3(1.02, 0.98, 0.94), clamp(drain + fear * 0.25, 0.0, 0.9));
       col += (rnd(uv * vec2(1013.0, 717.0) + fract(time * 7.13)) - 0.5) * (0.025 + drain * 0.05 + fear * 0.05);
@@ -57,7 +60,7 @@ const FX = {
     }`,
 };
 const composer = new EffectComposer(renderer);
-composer.addPass(new RenderPass(scene, camera)); composer.addPass(new OutputPass());
+composer.addPass(new RenderPass(scene, camera));
 const fxPass = new ShaderPass(FX); composer.addPass(fxPass);
 const U = fxPass.uniforms;
 
@@ -70,11 +73,28 @@ const SUN_DIR = new THREE.Vector3(-0.35, 0.55, 1).normalize();
 const pool = Array.from({ length: 4 }, () => { const l = new THREE.PointLight(0xffe8c8, 0, 9, 2); scene.add(l); return l; });
 let basePR = 1;
 const gov = createGovernor({ apply: (s) => { renderer.setPixelRatio(basePR * s); composer.setPixelRatio(basePR * s); } });
+// cheaper lighting on Low: every Standard (PBR) material swaps for a Lambert copy, and back
+const lamb = new Map();
+function toLambert(on) {
+  scene.traverse((o) => {
+    if (!o.isMesh || !o.material || Array.isArray(o.material)) return;
+    const m = o.material;
+    if (on && m.isMeshStandardMaterial) {
+      let l = lamb.get(m);
+      if (!l) { l = new THREE.MeshLambertMaterial({ map: m.map, color: m.color, vertexColors: m.vertexColors, emissive: m.emissive, emissiveMap: m.emissiveMap, transparent: m.transparent, opacity: m.opacity, side: m.side, depthWrite: m.depthWrite }); l.userData.std = m; lamb.set(m, l); }
+      l.map = m.map; l.emissiveIntensity = m.emissiveIntensity; l.needsUpdate = true; o.material = l;
+    } else if (!on && m.isMeshLambertMaterial && m.userData.std) { const st = m.userData.std; st.map = m.map; st.emissiveIntensity = m.emissiveIntensity; o.material = st; }
+  });
+}
+let lambertOn = false;
 function applyQuality() {
   const q = settings.quality, dpr = devicePixelRatio || 1;
-  basePR = q === 'low' ? Math.min(dpr, 1) * 0.75 : q === 'high' ? Math.min(dpr, 2) : Math.min(dpr, 1.25);
+  basePR = q === 'low' ? Math.min(dpr, 1) * 0.75 : q === 'high' ? Math.min(dpr, 1.5) : Math.min(dpr, 1);
+  pool.forEach((l, i) => (l.visible = i < (q === 'low' ? 2 : q === 'high' ? 4 : 3)));
   renderer.setPixelRatio(basePR * gov.scale); composer.setPixelRatio(basePR * gov.scale);
   sun.castShadow = q !== 'low';
+  if ((q === 'low') !== lambertOn) { lambertOn = q === 'low'; toLambert(lambertOn); }
+  W.meshes.mirror && (W.meshes.mirror.getRenderTarget().setSize(q === 'high' ? 512 : 256, q === 'high' ? 512 : 256));
   const sm = q === 'high' ? 2048 : 1024;
   if (sun.shadow.mapSize.x !== sm) { sun.shadow.mapSize.set(sm, sm); sun.shadow.map?.dispose(); sun.shadow.map = null; }
   renderer.shadowMap.type = q === 'high' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap; renderer.shadowMap.needsUpdate = true;
@@ -138,6 +158,7 @@ const g = {
 const day = createDay(g);
 const deaths = createDeaths({ scene, camera, P, A, gore, U, W });
 const intro = createIntro({ scene, camera, A, voice, ui, U });
+lambertOn = false; applyQuality(); // again, now that the world and the people exist
 
 // ---------- screens ----------
 const SCREENS = ['warn', 'title', 'how', 'settings', 'pause', 'know', 'dead', 'ending', 'card'];
@@ -175,8 +196,8 @@ function applyMood() {
   sun.intensity = m.sun; sun.color.set(m.sunCol); hemi.intensity = m.hemi; hemi.color.set(m.sky).lerp(new THREE.Color(0xffffff), 0.5);
   U.drain.value = m.drain;
   // the lamps get dimmer and redder too
-  for (const f of W.fixtures) { f.m.material.emissiveIntensity = 1.2 - m.drain; }
-  W.mat.lamp.emissive.set(0xfff0d0).lerp(new THREE.Color(0xff4020), m.drain * 0.6);
+  W.mat.lamp.emissiveIntensity = 1.2 - m.drain; // every fixture shares this material
+  W.mat.lamp.emissive.set(0xfff0d0).lerp(new THREE.Color(0xff4020), m.drain * 0.6); W.mat.lamp.color.set(0xfff4e0).lerp(new THREE.Color(0xff8060), m.drain * 0.4);
   birds = m.birds;
 }
 let birds = 1;
@@ -341,7 +362,7 @@ function updateLights(dt) {
   sun.target.updateMatrixWorld();
   if ((poolT -= dt) <= 0) {
     poolT = 0.2;
-    const near = W.fixtures.map((f) => ({ f, d: (f.x - c.x) ** 2 + ((f.y - c.y) * 3) ** 2 + (f.z - c.z) ** 2 })).sort((a, b) => a.d - b.d).slice(0, pool.length);
+    const near = W.fixtures.map((f) => ({ f, d: (f.x - c.x) ** 2 + ((f.y - c.y) * 3) ** 2 + (f.z - c.z) ** 2 })).sort((a, b) => a.d - b.d).slice(0, pool.filter((l) => l.visible).length);
     near.forEach(({ f }, i) => { const l = pool[i]; l.position.set(f.x, f.y, f.z); l.color.set(f.color); l.distance = f.range; l.userData.base = f.power * (1 - mood(save.loop).drain * 0.6); l.userData.room = f.room; });
   }
   const late = save.loop >= 6, flick = late || g.himNear > 0.3;
@@ -357,13 +378,17 @@ function updateTitle(dt, t) {
 }
 
 // ---------- the loop ----------
-let last = performance.now(), fadeIn = 0;
+let last = performance.now(), fadeIn = 0, slowAcc = 0.016, slowT = 0, frameN = 0;
+const prof = { upd: 0, ren: 0, n: 0, calls: 0 };
 function frame(now) {
   requestAnimationFrame(frame);
   const raw = Math.max(0, Math.min(0.1, (now - last) / 1000)); last = now;
   const dt = Math.min(raw, 0.05); T += dt;
   gov.tick(raw);
+  if (mode === 'play') { slowAcc = slowAcc * 0.98 + raw * 0.02; if (gov.scale <= 0.56 && slowAcc > 0.026 && settings.quality !== 'low' && (slowT += raw) > 6) { slowT = 0; settings.quality = settings.quality === 'high' ? 'medium' : 'low'; store(SKEY, settings); $('sQuality').value = settings.quality; gov.reset(); applyQuality(); ui.toast('Graphics lowered to keep it smooth'); } else if (slowAcc < 0.022) slowT = 0; }
+  frameN++; renderer.shadowMap.needsUpdate = settings.quality === 'high' || frameN % 3 === 0 || mode !== 'play';
   input.pollPad(raw);
+  const _t0 = performance.now();
   if (mode === 'play') updatePlay(dt, T);
   else if (mode === 'wake') updateWake(dt, T);
   else if (mode === 'title' || mode === 'warn' || mode === 'how' || mode === 'settings') updateTitle(dt, T);
@@ -381,8 +406,10 @@ function frame(now) {
   A.setListener(camera.position, P.lookDir);
   const out = mode === 'intro' ? 1 : indoors(P.zone) ? 0 : 1;
   A.ambience(dt, { outdoors: out, birds: mode === 'intro' ? 0 : birds, fear, rain: mode === 'intro' ? 1 : 0, traffic: mode === 'intro' ? 0 : 1 });
+  const _t1 = performance.now();
   renderer.info.reset();
   composer.render();
+  prof.upd += _t1 - _t0; prof.ren += performance.now() - _t1; prof.n++; prof.calls += renderer.info.render.calls;
   input.endFrame();
 }
 
@@ -500,6 +527,7 @@ if (TEST) window.__s = {
   focus() { return focus ? focus.label : null; },
   key(code, down = true) { if (down) { input.keys.add(code); input.pressed.add(code); } else input.keys.delete(code); },
   playIntro() { mode = 'intro'; only(null); nightMood(); intro.start(); },
-  stats() { return { calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, merge: W.stats, children: scene.children.length }; },
+  prof() { const r = { upd: +(prof.upd / prof.n).toFixed(2), ren: +(prof.ren / prof.n).toFixed(2), n: prof.n, calls: Math.round(prof.calls / prof.n) }; prof.upd = prof.ren = prof.n = prof.calls = 0; return r; },
+  stats() { return { programs: renderer.info.programs.length, lights: scene.children.filter((c) => c.isLight).length, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, merge: W.stats, children: scene.children.length }; },
 };
 void introReplay;

@@ -2,6 +2,7 @@
 // Geometry is shared by every body and materials are cached by colour, so a crowd costs almost nothing.
 import * as THREE from 'three';
 import * as TX from './tex.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const G = {
   head: new THREE.SphereGeometry(0.115, 20, 14),
@@ -14,15 +15,13 @@ const G = {
   thigh: new THREE.CapsuleGeometry(0.075, 0.3, 3, 8),
   shin: new THREE.CapsuleGeometry(0.06, 0.32, 3, 8),
   shoe: new THREE.BoxGeometry(0.11, 0.08, 0.26),
-  coat: new THREE.CylinderGeometry(0.2, 0.3, 0.75, 12, 1, true),
+  coat: new THREE.CylinderGeometry(0.2, 0.3, 0.75, 12, 1, false),
   hat: new THREE.CylinderGeometry(0.13, 0.13, 0.12, 14),
   brim: new THREE.CylinderGeometry(0.21, 0.21, 0.015, 18),
   ear: new THREE.SphereGeometry(0.025, 6, 4),
   hairCap: new THREE.SphereGeometry(0.122, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.55),
 };
 G.shoe.translate(0, 0, 0.05);
-const mats = new Map();
-const cm = (c, rough = 0.8) => { const k = c + ':' + rough; if (!mats.has(k)) mats.set(k, new THREE.MeshStandardMaterial({ color: c, roughness: rough })); return mats.get(k); };
 
 export const FACES = {
   owen: { skin: 0xd8a888, eye: 0x4a6a8a, hair: 0x3a2a1a, brow: 0x2a1a10, beard: 0x3a2a1a, lips: 0xa05a50, age: 34 },
@@ -49,36 +48,56 @@ export function faceMaterial(key, faceless = false, raw = false) {
 }
 
 // o: { face, shirt, pants, shoes, coat, hat, faceless, skin }
+// One person = ONE skinned mesh (every body part baked into it, coloured per vertex, each part bound rigidly to
+// its joint) + the head (it needs the face texture). Two draw calls instead of twenty-odd. The joints are Bones,
+// so the animation code just rotates them like before, and gore can still tear one loose.
+const bodyMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 });
+const _c = new THREE.Color();
 export function makePerson(o = {}) {
   const f = FACES[o.face || 'owen'];
-  const skin = cm(f ? f.skin : 0xc8a890, 0.7), shirt = cm(o.shirt ?? 0x3a5a8a), pants = cm(o.pants ?? 0x2a2a3a), shoes = cm(o.shoes ?? 0x1a1410, 0.6);
-  const root = new THREE.Group(), hips = new THREE.Group(), spine = new THREE.Group(), neck = new THREE.Group(), head = new THREE.Group();
-  root.add(hips); hips.position.y = 0.95;
-  const m = (geo, mt, parent, x = 0, y = 0, z = 0) => { const me = new THREE.Mesh(geo, mt); me.position.set(x, y, z); me.castShadow = true; parent.add(me); return me; };
-  m(G.hips, pants, hips, 0, 0.02, 0).rotation.z = Math.PI / 2;
-  hips.add(spine); spine.position.y = 0.08;
-  const torso = m(G.torso, shirt, spine, 0, 0.27, 0); torso.scale.set(1.12, 1, 0.78);
-  spine.add(neck); neck.position.y = 0.56; m(G.neck, skin, neck, 0, 0.03, 0);
-  neck.add(head); head.position.y = 0.16;
-  const headMesh = m(G.head, faceMaterial(o.face || 'owen', o.faceless), head, 0, 0, 0); headMesh.scale.set(1, 1.12, 1.02);
-  m(G.ear, skin, head, -0.112, 0, 0); m(G.ear, skin, head, 0.112, 0, 0);
-  if (f && f.hair !== undefined && !f.bald) { const hc = m(G.hairCap, cm(f.hair, 0.95), head, 0, 0.012, -0.008); hc.scale.set(1.03, 1.12, 1.06); }
+  const C = { skin: f ? f.skin : 0xc8a890, shirt: o.shirt ?? 0x3a5a8a, pants: o.pants ?? 0x2a2a3a, shoes: o.shoes ?? 0x1a1410, coat: o.coat ?? 0x555555, hair: f?.hair ?? 0x222222, hat: o.hat ?? 0x222222 };
+  const root = new THREE.Group();
+  const bone = (parent, x, y, z) => { const b = new THREE.Bone(); b.position.set(x, y, z); parent.add(b); return b; };
+  const hips = bone(root, 0, 0.95, 0), spine = bone(hips, 0, 0.08, 0), neck = bone(spine, 0, 0.56, 0), head = bone(neck, 0, 0.16, 0);
   const limbs = {};
   for (const s of [-1, 1]) {
-    const sh = new THREE.Group(); sh.position.set(s * 0.21, 0.47, 0); spine.add(sh);
-    const up = m(G.upper, o.coat ? cm(o.coat) : shirt, sh, 0, -0.15, 0);
-    const el = new THREE.Group(); el.position.y = -0.3; sh.add(el);
-    m(G.lower, o.coat ? cm(o.coat) : (o.shortSleeves ? skin : shirt), el, 0, -0.14, 0); m(G.hand, skin, el, 0, -0.31, 0.01);
-    const hp = new THREE.Group(); hp.position.set(s * 0.09, -0.02, 0); hips.add(hp);
-    m(G.thigh, pants, hp, 0, -0.22, 0);
-    const kn = new THREE.Group(); kn.position.y = -0.45; hp.add(kn);
-    m(G.shin, pants, kn, 0, -0.22, 0); m(G.shoe, shoes, kn, 0, -0.46, 0);
-    limbs[s < 0 ? 'L' : 'R'] = { sh, el, hp, kn, up };
+    const sh = bone(spine, s * 0.21, 0.47, 0), el = bone(sh, 0, -0.3, 0), hp = bone(hips, s * 0.09, -0.02, 0), kn = bone(hp, 0, -0.45, 0);
+    limbs[s < 0 ? 'L' : 'R'] = { sh, el, hp, kn, up: sh };
   }
-  if (o.coat) { const c = m(G.coat, cm(o.coat), spine, 0, 0.12, 0); c.material.side = THREE.DoubleSide; c.scale.set(1.1, 1, 0.85); }
-  if (o.hat) { m(G.hat, cm(o.hat, 0.9), head, 0, 0.13, 0); m(G.brim, cm(o.hat, 0.9), head, 0, 0.08, 0); }
-  const rig = { root, hips, spine, neck, head, headMesh, limbs, phase: Math.random() * 6, opts: o, faceKey: o.face || 'owen', faceless: !!o.faceless };
-  return rig;
+  const bones = [hips, spine, neck, head, limbs.L.sh, limbs.L.el, limbs.L.hp, limbs.L.kn, limbs.R.sh, limbs.R.el, limbs.R.hp, limbs.R.kn];
+  root.updateMatrixWorld(true);
+  const parts = [];
+  const part = (geo, color, b, x = 0, y = 0, z = 0, sx = 1, sy = 1, sz = 1, rz = 0) => {
+    const g = geo.clone();
+    g.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, rz)), new THREE.Vector3(sx, sy, sz)));
+    g.applyMatrix4(b.matrixWorld);
+    const n = g.attributes.position.count, bi = bones.indexOf(b);
+    _c.set(color);
+    const col = new Float32Array(n * 3), si = new Uint16Array(n * 4), sw = new Float32Array(n * 4);
+    for (let i = 0; i < n; i++) { col[i * 3] = _c.r; col[i * 3 + 1] = _c.g; col[i * 3 + 2] = _c.b; si[i * 4] = bi; sw[i * 4] = 1; }
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setAttribute('skinIndex', new THREE.BufferAttribute(si, 4)); g.setAttribute('skinWeight', new THREE.BufferAttribute(sw, 4));
+    parts.push(g.index ? g : g);
+  };
+  part(G.hips, C.pants, hips, 0, 0.02, 0, 1, 1, 1, Math.PI / 2);
+  part(G.torso, C.shirt, spine, 0, 0.27, 0, 1.12, 1, 0.78);
+  part(G.neck, C.skin, neck, 0, 0.03, 0);
+  part(G.ear, C.skin, head, -0.112, 0, 0); part(G.ear, C.skin, head, 0.112, 0, 0);
+  if (f && f.hair !== undefined && !f.bald) part(G.hairCap, C.hair, head, 0, 0.012, -0.008, 1.03, 1.12, 1.06);
+  for (const s of ['L', 'R']) {
+    const l = limbs[s];
+    part(G.upper, o.coat ? C.coat : C.shirt, l.sh, 0, -0.15, 0);
+    part(G.lower, o.coat ? C.coat : (o.shortSleeves ? C.skin : C.shirt), l.el, 0, -0.14, 0); part(G.hand, C.skin, l.el, 0, -0.31, 0.01);
+    part(G.thigh, C.pants, l.hp, 0, -0.22, 0);
+    part(G.shin, C.pants, l.kn, 0, -0.22, 0); part(G.shoe, C.shoes, l.kn, 0, -0.46, 0);
+  }
+  if (o.coat) part(G.coat, C.coat, spine, 0, 0.12, 0, 1.1, 1, 0.85);
+  if (o.hat) { part(G.hat, C.hat, head, 0, 0.13, 0); part(G.brim, C.hat, head, 0, 0.08, 0); }
+  const geo = mergeGeometries(parts, false); parts.forEach((g) => g.dispose());
+  const body = new THREE.SkinnedMesh(geo, bodyMat);
+  body.castShadow = true; body.receiveShadow = true; body.frustumCulled = false;
+  root.add(body); body.bind(new THREE.Skeleton(bones));
+  const headMesh = new THREE.Mesh(G.head, faceMaterial(o.face || 'owen', o.faceless)); headMesh.scale.set(1, 1.12, 1.02); headMesh.castShadow = true; head.add(headMesh);
+  return { root, body, hips, spine, neck, head, headMesh, limbs, phase: Math.random() * 6, opts: o, faceKey: o.face || 'owen', faceless: !!o.faceless };
 }
 export function setFaceless(rig, on, raw = false) { rig.faceless = on; rig.headMesh.material = faceMaterial(rig.faceKey, on, raw); }
 export function setLayer(rig, n) { rig.root.traverse((c) => c.layers.set(n)); }

@@ -171,7 +171,7 @@ export function setDoor(d, open) {
 }
 function inter(id, x, y, z, r = 1.6) { const it = { id, x, y, z, r }; W.inter.push(it); return it; }
 function fixture(x, y, z, room, o = {}) {
-  const m = V(x - 0.22, y - 0.06, z - 0.22, x + 0.22, y, z + 0.22, M.lamp, { cast: false }); m.material = M.lamp.clone();
+  const m = V(x - 0.22, y - 0.06, z - 0.22, x + 0.22, y, z + 0.22, M.lamp, { cast: false }); 
   W.fixtures.push({ x, y: y - 0.3, z, room, m, color: o.color ?? 0xffe8c8, power: o.power ?? 14, range: o.range ?? 9, on: true });
   return m;
 }
@@ -182,9 +182,16 @@ function label(text, x, y, z, ry, w = 0.36, h = 0.12, o = {}) {
 }
 const tree = (x, z) => {
   V(x - 0.12, 0, z - 0.12, x + 0.12, 3, z + 0.12, M.bark);
-  const l = new THREE.Mesh(new THREE.IcosahedronGeometry(1.5, 1), M.leaves); l.position.set(x, 3.8, z); l.scale.set(1, 1.2, 1); l.castShadow = true; W.scene.add(l);
+  const l = new THREE.Mesh(new THREE.IcosahedronGeometry(1.5, 1), M.leaves); l.position.set(x, 3.8, z); l.scale.set(1, 1.2, 1); l.castShadow = true; l.userData.static = true; W.scene.add(l);
   W.colliders.push({ x0: x - 0.2, x1: x + 0.2, y0: 0, y1: 3, z0: z - 0.2, z1: z + 0.2 });
 };
+// a group that never moves again: its meshes go to the top level as static scenery, so they merge
+function flatten(group) {
+  group.updateMatrixWorld(true);
+  const list = []; group.traverse((o) => { if (o.isMesh) list.push(o); });
+  for (const m of list) { W.scene.attach(m); m.userData.static = true; }
+  group.parent?.remove(group);
+}
 export function makeCar(m, len = 4.4, wid = 1.8) {
   const g = new THREE.Group();
   const add = (x0, y0, z0, x1, y1, z1, mm) => { const b = new THREE.Mesh(boxGeo(x1 - x0, y1 - y0, z1 - z0, [1, 1]), mm); b.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2); b.castShadow = true; b.receiveShadow = true; g.add(b); return b; };
@@ -193,7 +200,7 @@ export function makeCar(m, len = 4.4, wid = 1.8) {
   add(-L * 0.45, 0.85, -Wd + 0.08, L * 0.35, 1.38, Wd - 0.08, M.carGlass);
   add(-L * 0.42, 1.36, -Wd + 0.1, L * 0.32, 1.42, Wd - 0.1, m);
   for (const [x, z] of [[-L * 0.62, -Wd], [L * 0.62, -Wd], [-L * 0.62, Wd], [L * 0.62, Wd]]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.24, 14), M.tyre); w.rotation.x = Math.PI / 2; w.position.set(x, 0.33, z); w.castShadow = true; g.add(w); }
-  const hl = add(L - 0.02, 0.6, -Wd + 0.15, L + 0.02, 0.75, -Wd + 0.45, M.whiteLight.clone()); const hr = add(L - 0.02, 0.6, Wd - 0.45, L + 0.02, 0.75, Wd - 0.15, M.whiteLight.clone());
+  const hl = add(L - 0.02, 0.6, -Wd + 0.15, L + 0.02, 0.75, -Wd + 0.45, M.whiteLight); const hr = add(L - 0.02, 0.6, Wd - 0.45, L + 0.02, 0.75, Wd - 0.15, M.whiteLight);
   g.userData.lights = [hl, hr];
   return g;
 }
@@ -247,7 +254,7 @@ export function buildWorld(scene) {
   V(-2.9, y + 0.85, -1.3, -2.45, y + 0.9, -0.4, M.steel);
   B(-2.0, y, -0.85, -0.15, y + 0.6, -0.15, M.white); // tub along the front wall
   const mirror = new Reflector(new THREE.PlaneGeometry(0.9, 0.8), { textureWidth: 512, textureHeight: 512, color: 0xb8b8b8, clipBias: 0.003 });
-  mirror.position.set(-2.92, y + 1.6, -0.85); mirror.rotation.y = Math.PI / 2; scene.add(mirror); W.meshes.mirror = mirror;
+  mirror.position.set(-2.92, y + 1.6, -0.85); mirror.rotation.y = Math.PI / 2; scene.add(mirror); W.meshes.mirror = mirror; mirror.visible = false;
   mirror.camera.layers.enable(1);
   V(-2.95, y + 1.18, -1.32, -2.9, y + 2.02, -0.38, M.frame);
   inter('mirror', -2.6, y + 1.6, -0.85, 1.4); inter('sink', -2.6, y + 0.95, -0.85, 1.2);
@@ -494,12 +501,12 @@ export function buildWorld(scene) {
   B(4.5, 0.15, 2.2, 4.9, 0.75, 2.6, M.carRed); // hydrant-ish post
   B(-3.3, 0.15, 3.0, -2.7, 1.0, 3.5, M.darkSteel); // trash can
   // Owen's car, parked by the alley, and the police car further along
-  const car = makeCar(M.carBlue); car.position.set(-13.6, 0, 5.05); scene.add(car); W.meshes.car = car;
+  const car = makeCar(M.carBlue); car.position.set(-13.6, 0, 5.05); scene.add(car); flatten(car);
   W.colliders.push({ x0: -15.8, x1: -11.4, y0: 0, y1: 1.4, z0: 4.15, z1: 5.95 });
   // the damage: a smashed headlight, a dent, and what is caught in the grille
   W.meshes.dent = V(-11.43, 0.45, 4.6, -11.35, 0.8, 5.4, M.darkSteel); W.meshes.carBlood = V(-11.36, 0.35, 4.7, -11.33, 0.7, 5.3, M.blood, { cast: false });
   inter('car', -11.0, 0.8, 5.0, 1.8); inter('glovebox', -13.0, 1.0, 4.0, 1.6);
-  const cop = makeCar(M.carWhite); cop.position.set(13.5, 0, 5.05); scene.add(cop); W.meshes.cop = cop;
+  const cop = makeCar(M.carWhite); cop.position.set(13.5, 0, 5.05); scene.add(cop); flatten(cop);
   V(13.2, 1.42, 4.6, 13.8, 1.55, 5.5, M.redLight.clone()); V(-2.2 + 15.6, 0.55, 4.14, 15.6, 0.7, 4.16, M.busStripe);
   W.colliders.push({ x0: 11.3, x1: 15.7, y0: 0, y1: 1.4, z0: 4.15, z1: 5.95 });
   // the limits of the world: the street goes on, but you don't
@@ -519,20 +526,32 @@ function mergeStatic(scene) {
   const keep = new Set();
   const mark = (o) => { if (!o) return; if (o.isObject3D) o.traverse((c) => keep.add(c)); };
   for (const v of Object.values(W.meshes)) mark(v);
-  W.glass.forEach(mark); W.fixtures.forEach((f) => mark(f.m)); W.signs.forEach(mark);
+  W.glass.forEach(mark); W.signs.forEach(mark);
+  // plain-coloured materials all become one vertex-coloured material (per roughness/metalness), so every
+  // untextured prop in a cell merges into a single mesh; textured ones merge per material
+  const vcMats = new Map(), _col = new THREE.Color();
+  const vcMat = (m) => { const k = m.roughness.toFixed(1) + '|' + m.metalness.toFixed(1); if (!vcMats.has(k)) vcMats.set(k, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: m.roughness, metalness: m.metalness })); return vcMats.get(k); };
+  const plain = (m) => m.isMeshStandardMaterial && !m.map && !m.transparent && m.side === THREE.FrontSide && m.emissive.getHex() === 0;
   const groups = new Map();
   for (const m of [...scene.children]) {
-    if (!m.isMesh || !m.userData.static || keep.has(m) || !m.geometry.index) continue;
-    const p = m.position, cell = `${Math.floor(p.x / 12)},${Math.floor(p.y / 6)},${Math.floor(p.z / 12)}`;
-    const key = m.material.uuid + '|' + m.castShadow + '|' + cell;
-    if (!groups.has(key)) groups.set(key, { mat: m.material, cast: m.castShadow, list: [] });
+    if (!m.isMesh || m.isInstancedMesh || !m.userData.static || keep.has(m)) continue;
+    const p = m.position, cell = Math.floor(p.x / 40) + ',' + Math.floor(p.y / 10) + ',' + Math.floor(p.z / 40);
+    const vc = plain(m.material), mat = vc ? vcMat(m.material) : m.material;
+    const key = mat.uuid + '|' + m.castShadow + '|' + cell;
+    if (!groups.has(key)) groups.set(key, { mat, vc, cast: m.castShadow, list: [] });
     groups.get(key).list.push(m);
   }
   let before = 0, after = 0;
   for (const gr of groups.values()) {
     before += gr.list.length;
-    if (gr.list.length < 2) { after++; continue; }
-    const geos = gr.list.map((m) => { m.updateMatrixWorld(true); const g = m.geometry.clone(); g.applyMatrix4(m.matrixWorld); return g; });
+    if (gr.list.length < 2 && !gr.vc) { after++; continue; }
+    const geos = gr.list.map((m) => {
+      m.updateMatrixWorld(true); const g = m.geometry.clone(); g.applyMatrix4(m.matrixWorld);
+      if (!g.index) g.setIndex([...Array(g.attributes.position.count).keys()]);
+      for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
+      if (gr.vc) { _col.copy(m.material.color); const n = g.attributes.position.count, c = new Float32Array(n * 3); for (let i = 0; i < n; i++) { c[i * 3] = _col.r; c[i * 3 + 1] = _col.g; c[i * 3 + 2] = _col.b; } g.setAttribute('color', new THREE.BufferAttribute(c, 3)); }
+      return g;
+    });
     const merged = mergeGeometries(geos, false);
     geos.forEach((g) => g.dispose());
     if (!merged) { after += gr.list.length; continue; }
@@ -672,7 +691,7 @@ function details(scene) {
   radiator(-3.0, -1.6, 0, -0.3, -0.18);
   // --- the street ---
   const parked = [[-24, 4.95, 0x3a3a3a], [-19, 5.05, 0xc8c8c0], [7, 5.0, 0x4a2a1a], [19, 5.0, 0x2a4a2a], [-17, 11.05, 0x6a6a20, true], [20, 11.0, 0x1a1a3a, true]];
-  for (const [x, z, c, far] of parked) { const car = makeCar(col(c, 0.35, 0.5)); car.position.set(x, 0, z); if (far) car.rotation.y = Math.PI; scene.add(car); W.colliders.push({ x0: x - 2.2, x1: x + 2.2, y0: 0, y1: 1.4, z0: z - 0.9, z1: z + 0.9 }); }
+  for (const [x, z, c, far] of parked) { const car = makeCar(col(c, 0.35, 0.5)); car.position.set(x, 0, z); if (far) car.rotation.y = Math.PI; scene.add(car); flatten(car); W.colliders.push({ x0: x - 2.2, x1: x + 2.2, y0: 0, y1: 1.4, z0: z - 0.9, z1: z + 0.9 }); }
   // fire escapes on our building and the neighbours
   for (const [x0, x1] of [[3.6, 6.2], [-29, -25], [20, 24]]) for (let n = 1; n <= 4; n++) {
     const fy = n * 3;

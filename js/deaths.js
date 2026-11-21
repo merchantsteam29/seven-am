@@ -79,14 +79,14 @@ export function createDeaths(c) {
       tp: 4.5, tpStart() {
         // the lobby, a moment later: the doors bent outwards, an arm between them, the pool spreading
         A.thud(v3(6.3, 0.5, -8), 1, 0.3, 40); W.meshes.elev0L.position.x = 5.9; W.meshes.elev0R.position.x = 6.74; W.meshes.elev0L.rotation.y = 0.08; W.meshes.elev0R.rotation.y = -0.08;
-        const b = makeBody(); b.root.visible = false;
+        const b = makeBody(); lay(b, 6.0, 0.05, -9.3, Math.PI / 2, false);
         const arm = b.limbs.L.sh; gore.loose(arm, v3(0, 0, 0.2), 0, true);
         arm.position.set(6.32, 0.12, -7.95); arm.rotation.set(Math.PI / 2, 0, 0.2);
         gore.pool(v3(6.3, 0.0, -7.6), 1.8, 0.35); gore.splat(v3(6.3, 0.0, -7.9), 0.6);
         U.black.value = 0; U.red.value = 0.08;
         this.drip = 0;
       },
-      tpU(t, dt) { look(v3(3.2, 1.5, -3.6), v3(6.3, 0.3, -7.9)); if ((this.drip -= dt) < 0) { this.drip = 0.25; gore.spray(v3(6.3, 1.2 + Math.random() * 0.8, -7.97), v3(0, -1, 0.2), 2, 0.4, 0.2); } },
+      tpU(t, dt) { look(v3(5.4, 1.1, -5.6), v3(6.3, 0.25, -7.8)); if ((this.drip -= dt) < 0) { this.drip = 0.25; gore.spray(v3(6.3, 1.2 + Math.random() * 0.8, -7.97), v3(0, -1, 0.2), 2, 0.4, 0.2); } },
     },
     // ---- the air conditioner ----
     ac: {
@@ -98,7 +98,7 @@ export function createDeaths(c) {
       },
       tp: 4.2, tpStart() {
         const b = makeBody(); lay(b, P.x, 0.15, P.z, Math.PI);
-        b.head.visible = false;
+        b.head.scale.setScalar(0.001);
         W.meshes.ac.position.set(P.x, 0.45, P.z + 0.75); W.meshes.ac.rotation.set(0.2, 0.4, 0.1);
         const neck = v3(P.x, 0.3, P.z + 0.6);
         gore.spray(neck, v3(0, 0.6, 1), 160, 6, 1.2); gore.spray(neck, v3(0, 1, 0), 60, 3, 1.5);
@@ -127,7 +127,7 @@ export function createDeaths(c) {
         for (let i = 0; i < 10; i++) gore.splat(v3(P.x + 2 + i * 0.9, 0.0, P.z + (Math.random() - 0.5) * 0.6), 0.4 + Math.random() * 0.5);
         A.screech(tr.position, 2.5);
         U.black.value = 0; U.red.value = 0.08;
-        this.c = v3(P.x + 3, 1.7, 3.2);
+        this.c = v3(P.x + 1, 2.4, 10.2);
       },
       tpU(t) { const b = body.root.position; look(this.c, v3(b.x, 0.4, b.z)); },
     },
