@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>7:00 AM</title>
+<meta name="description" content="Owen Hale wakes up at 7:00 AM. He dies before 7:40. He wakes up at 7:00 AM. Every time he fixes what killed him, the world gets a little more wrong. A first-person horror game about a loop, a road, and a man with no face.">
+<link rel="icon" href="icons/icon.svg">
+<meta name="theme-color" content="#0a0606">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta property="og:title" content="7:00 AM">
+<meta property="og:description" content="Every morning he dies. Every morning he wakes up. Every morning the world is a little more wrong.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Libre+Franklin:ital,wght@0,300;0,500;0,800;1,300&display=swap">
+<style>
+:root { --ink: #e4ddd2; --dim: #8a8278; --red: #e0301e; --led: #ff2a14; --line: rgba(228, 221, 210, .16);
+  --f-head: "Libre Franklin", Arial, sans-serif; --f-mono: "Share Tech Mono", "Courier New", monospace; color-scheme: dark; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color: var(--ink); font-family: var(--f-head); font-weight: 300; user-select: none; -webkit-user-select: none; }
+canvas#c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+button { font: 500 17px var(--f-head); letter-spacing: .14em; text-transform: uppercase; color: var(--ink); background: transparent; border: 0; padding: 9px 16px; cursor: pointer; transition: .15s; }
+button:hover:not(:disabled), button:focus-visible { color: #fff; outline: none; text-shadow: 0 0 14px rgba(255, 60, 30, .8); }
+button:hover::before, button:focus-visible::before { content: '› '; color: var(--led); }
+.screen { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px 16px; overflow-y: auto; z-index: 20; background: radial-gradient(ellipse at 50% 50%, rgba(0, 0, 0, .25), rgba(0, 0, 0, .88) 72%); }
+.screen.solid { background: #000; }
+.card { width: min(580px, 100%); display: grid; gap: 10px; text-align: center; }
+h1 { font: 400 clamp(56px, 12vw, 130px)/1 var(--f-mono); white-space: nowrap; margin: 0; color: var(--led); text-shadow: 0 0 24px rgba(255, 40, 16, .75), 0 0 2px #fff4; letter-spacing: .02em; animation: blinkc 2s steps(1) infinite; }
+h1 span { animation: colon 1s steps(1) infinite; }
+@keyframes colon { 50% { opacity: .15 } }
+@keyframes blinkc { 0%, 96% { opacity: 1 } 97% { opacity: .5 } }
+.tag { font: italic 300 18px/1.5 var(--f-head); color: var(--dim); margin: 8px auto 16px; max-width: 32em; }
+.menu { display: grid; gap: 0; width: min(330px, 100%); margin: 0 auto; }
+.small { font: 14px/1.5 var(--f-head); color: var(--dim); }
+h2 { font: 800 30px var(--f-head); letter-spacing: .18em; text-transform: uppercase; margin: 0 0 6px; color: #f0e8dc; }
+.row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.warn p { font: 18px/1.6 var(--f-head); margin: 0 0 10px; }
+.keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 18px; text-align: left; font-size: 17px; margin: 4px 0 10px; }
+.keys dt { font-family: var(--f-mono); color: #fff; font-size: 15px; }
+.keys dd { margin: 0; }
+.settings { display: grid; gap: 12px; text-align: left; }
+.settings label { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; font-size: 17px; }
+.settings label output { font-family: var(--f-mono); font-size: 14px; color: var(--dim); }
+.settings input[type=range] { grid-column: 1 / -1; accent-color: var(--red); width: 100%; }
+.settings select { font: 15px var(--f-mono); background: #111; color: var(--ink); border: 1px solid var(--line); padding: 4px 8px; }
+.settings .chk { grid-template-columns: auto 1fr; cursor: pointer; }
+.settings input[type=checkbox] { accent-color: var(--red); width: 18px; height: 18px; }
+/* the morning card */
+#card { background: #000; }
+#cardTime { font: 400 clamp(70px, 16vw, 170px)/1 var(--f-mono); color: var(--led); text-shadow: 0 0 30px rgba(255, 40, 16, .8); animation: fadeup 1.2s; }
+#cardSub { font: italic 300 22px var(--f-head); color: var(--dim); letter-spacing: .1em; opacity: 0; animation: fadeup 1.2s .8s forwards; }
+/* death */
+#dead { background: radial-gradient(ellipse, #1a0000, #000 70%); }
+#deadTime { font: 22px var(--f-mono); color: var(--led); letter-spacing: .1em; }
+#deadTitle { font: 800 clamp(40px, 9vw, 86px)/1 var(--f-head); letter-spacing: .12em; color: #f0e8dc; margin: 4px 0; animation: shake .25s 2; }
+@keyframes shake { 0%, 100% { transform: none } 25% { transform: translate(-4px, 2px) } 75% { transform: translate(4px, -2px) } }
+#deadLine { font: italic 300 20px var(--f-head); color: var(--dim); }
+#deadLearn { font: 17px/1.5 var(--f-head); color: var(--ink); border-left: 2px solid var(--red); text-align: left; padding: 6px 12px; margin: 10px auto; max-width: 30em; }
+#deadLearn:empty { display: none; }
+#deadLearn::before { content: 'You will remember: '; color: var(--led); font-weight: 500; }
+/* endings */
+#ending .card { width: min(660px, 100%); }
+#endTitle { font: 800 26px var(--f-head); color: var(--dim); letter-spacing: .3em; }
+#endLines p { font: 300 21px/1.55 var(--f-head); margin: 0 0 14px; opacity: 0; animation: fadeup 2.2s forwards; }
+#endFoot { opacity: 0; animation: fadeup 2s forwards; }
+@keyframes fadeup { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
+/* what you know */
+#knowList { text-align: left; max-height: 60vh; overflow-y: auto; }
+.kgroup h3 { font: 800 13px var(--f-head); letter-spacing: .2em; text-transform: uppercase; color: var(--led); margin: 14px 0 6px; }
+.kgroup p { margin: 0 0 8px; font-size: 16px; line-height: 1.45; }
+/* HUD */
+#hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+#xhair { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: rgba(240, 232, 220, .45); transition: .15s; }
+#xhair.on { width: 8px; height: 8px; margin: -4px 0 0 -4px; background: rgba(255, 245, 230, .9); }
+#prompt { position: absolute; left: 0; right: 0; top: calc(50% + 26px); text-align: center; font: 500 17px var(--f-head); text-shadow: 0 1px 4px #000, 0 0 10px #000; }
+#prompt b { font: 13px var(--f-mono); border: 1px solid rgba(228, 221, 210, .55); padding: 1px 6px; margin-right: 6px; }
+#sub { position: absolute; left: 50%; bottom: 12%; transform: translateX(-50%); max-width: min(780px, 90vw); text-align: center; font: 400 21px/1.45 var(--f-head); color: #f4eee4; text-shadow: 0 1px 3px #000, 0 0 14px #000; opacity: 0; transition: opacity .4s; }
+#sub.on { opacity: 1; }
+#sub.think { font-style: italic; color: #d8d0c4; }
+#sub b { font-weight: 800; color: #fff; }
+#sub.him { font: 22px var(--f-mono); color: #ff8a70; letter-spacing: .12em; }
+#toast { position: absolute; left: 50%; top: 14%; transform: translateX(-50%); font: 500 16px var(--f-head); letter-spacing: .2em; text-transform: uppercase; color: #fff; opacity: 0; transition: opacity .4s; text-shadow: 0 0 10px #000; }
+#toast.on { opacity: .9; }
+#hint { position: absolute; left: 50%; top: 21%; transform: translateX(-50%); font: 14px var(--f-mono); color: var(--dim); opacity: 0; transition: opacity .6s; text-align: center; max-width: 90vw; text-shadow: 0 0 6px #000; }
+#hint.on { opacity: .9; }
+#obj { position: absolute; left: 26px; top: 22px; max-width: 380px; opacity: 0; transition: opacity .8s; text-shadow: 0 1px 4px #000, 0 0 8px #000; }
+#obj.on { opacity: 1; }
+#objClock { font: 22px var(--f-mono); color: var(--led); text-shadow: 0 0 10px rgba(255, 40, 16, .6); }
+#objMain { font: 500 19px/1.3 var(--f-head); margin: 4px 0; }
+#objSub { font: 15px/1.45 var(--f-head); color: #cfc7bb; }
+#objSub div::before { content: '— '; color: var(--dim); }
+#skip { position: fixed; right: 26px; bottom: 24px; z-index: 12; font: 13px var(--f-mono); color: var(--dim); opacity: 0; transition: .4s; width: 140px; text-align: right; }
+#skip.on { opacity: .8; }
+#skipBar { height: 2px; background: rgba(255, 255, 255, .12); margin-top: 5px; }
+#skipFill { height: 100%; width: 0; background: var(--led); }
+/* blood on the lens */
+#bloodFX { position: fixed; inset: 0; pointer-events: none; z-index: 8; opacity: 0; transition: opacity .1s; }
+#bloodFX.on { opacity: 1; }
+#bloodFX.heavy { background: radial-gradient(circle at 30% 40%, rgba(110, 0, 0, .9) 0 8%, transparent 9%), radial-gradient(circle at 62% 30%, rgba(90, 0, 0, .85) 0 12%, transparent 13%), radial-gradient(circle at 70% 70%, rgba(120, 4, 0, .9) 0 6%, transparent 7%), radial-gradient(circle at 20% 80%, rgba(80, 0, 0, .9) 0 14%, transparent 15%), radial-gradient(ellipse at 50% 50%, transparent 30%, rgba(70, 0, 0, .95) 80%); }
+#bloodFX.burn { background: radial-gradient(ellipse at 50% 50%, rgba(255, 200, 120, .3), rgba(120, 20, 0, .9) 80%); }
+/* touch */
+#touch { position: fixed; inset: 0; z-index: 9; display: none; }
+#touch.on { display: block; }
+#tZone { position: absolute; inset: 0; }
+#tStick { position: absolute; width: 110px; height: 110px; margin: -55px 0 0 -55px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, .15); display: none; }
+#tStick.on { display: block; }
+#tKnob { position: absolute; left: 35px; top: 35px; width: 40px; height: 40px; border-radius: 50%; background: rgba(255, 255, 255, .15); }
+.tb { position: absolute; width: 64px; height: 64px; border-radius: 50%; border: 1px solid rgba(228, 221, 210, .3); background: rgba(0, 0, 0, .3); color: var(--ink); font: 11px var(--f-mono); display: grid; place-items: center; }
+.tb.on { background: rgba(224, 48, 30, .35); }
+body:not([data-input="touch"]) .only-touch, body:not([data-input="pad"]) .only-pad, body:not([data-input="keys"]) .only-keys { display: none; }
+@media (max-width: 600px) { #obj { left: 14px; top: 12px; max-width: 70vw } #objMain { font-size: 16px } #sub { font-size: 17px; bottom: 24% } }
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="bloodFX"></div>
+<div id="skip">Hold E to skip<div id="skipBar"><div id="skipFill"></div></div></div>
+
+<div id="hud" hidden>
+  <div id="xhair"></div>
+  <div id="prompt"></div>
+  <div id="sub"></div>
+  <div id="toast"></div>
+  <div id="hint"></div>
+  <div id="obj"><div id="objClock">7:00 AM</div><div id="objMain"></div><div id="objSub"></div></div>
+</div>
+
+<div id="touch">
+  <div id="tZone"></div>
+  <div id="tStick"><div id="tKnob"></div></div>
+  <div class="tb" data-t="use" style="right:24px;bottom:110px">USE</div>
+  <div class="tb" data-t="crouch" style="right:24px;bottom:30px">CROUCH</div>
+  <div class="tb" data-t="run" style="right:100px;bottom:70px">RUN</div>
+  <div class="tb" data-t="notes" style="right:84px;top:20px;width:52px;height:52px">TIME</div>
+  <div class="tb" data-t="pause" style="right:20px;top:20px;width:52px;height:52px">II</div>
+</div>
+
+<div id="warn" class="screen solid" hidden>
+  <div class="card warn">
+    <h2>Before you wake up</h2>
+    <p>This is a horror game. You will die many times, in ways that are sudden and violent. It deals with drunk driving and a death on the road, and it has jump scares.</p>
+    <p class="small">How much of each death you see is up to you: Settings → Gore. "Quick cut" (the default) cuts to black at the moment it happens. "Full" shows what is left.</p>
+    <div class="row"><button id="warnOk">I understand</button></div>
+  </div>
+</div>
+
+<div id="title" class="screen" hidden>
+  <div class="card">
+    <h1>7<span>:</span>00 AM</h1>
+    <p class="tag">Owen Hale wakes up at seven. He is dead before the bus comes.<br>He wakes up at seven.</p>
+    <div class="menu">
+      <button id="btnContinue" hidden>Continue</button>
+      <button id="btnNew">New morning</button>
+      <button id="btnReplayIntro" hidden>The night before</button>
+      <button id="btnHow">How to play</button>
+      <button id="btnSettings">Settings</button>
+      <button id="syncBtn" title="Keep your progress on all your devices">Sync</button>
+      <button id="installApp" style="display:none">Install as an app</button>
+      <button id="pcDownload" title="The Game Library app for Windows: every game in one place">Download for PC</button>
+    </div>
+    <p class="small" id="titleProg"></p>
+    <p class="small only-keys">Mouse and keyboard · controllers work too · headphones</p>
+    <p class="small only-pad">Controller connected</p>
+    <p class="small only-touch">Touch controls · play it sideways · headphones</p>
+  </div>
+</div>
+
+<div id="how" class="screen" hidden>
+  <div class="card">
+    <h2>The morning</h2>
+    <dl class="keys only-keys">
+      <dt>WASD · Mouse</dt><dd>Move, look</dd>
+      <dt>Shift</dt><dd>Run</dd>
+      <dt>C · Ctrl</dt><dd>Crouch</dd>
+      <dt>E · Click</dt><dd>Use, open, talk, look closer</dd>
+      <dt>Tab</dt><dd>The time, and what you need to do</dd>
+      <dt>Esc</dt><dd>Pause · what you know</dd>
+    </dl>
+    <dl class="keys only-pad">
+      <dt>Sticks</dt><dd>Move, look</dd>
+      <dt>LB / L3</dt><dd>Run</dd>
+      <dt>B / R3</dt><dd>Crouch</dd>
+      <dt>A</dt><dd>Use</dd>
+      <dt>Y</dt><dd>The time, the objective</dd>
+      <dt>Menu</dt><dd>Pause</dd>
+    </dl>
+    <p class="small" style="text-align:left">You need to catch the 7:40 bus to work. Something will kill you before then. When it does, you wake up at 7:00 again, and you remember. Use what you learned: every death can be avoided.</p>
+    <p class="small" style="text-align:left">Every morning you survive a little longer, the world gets a little less right. Look around. Something happened last night that you don't remember. Not yet.</p>
+    <div class="row"><button data-back>Back</button></div>
+  </div>
+</div>
+
+<div id="settings" class="screen" hidden>
+  <div class="card">
+    <h2>Settings</h2>
+    <div class="settings">
+      <label>Gore <select id="sGore"><option value="quick">Quick cut</option><option value="full">Full</option></select></label>
+      <label>Volume <output></output><input type="range" id="sVol" min="0" max="1" step="0.05"></label>
+      <label>Brightness <output></output><input type="range" id="sBright" min="0.7" max="1.6" step="0.05"></label>
+      <label>Look sensitivity <output></output><input type="range" id="sSens" min="0.3" max="2.5" step="0.05"></label>
+      <label>Field of view <output></output><input type="range" id="sFov" min="60" max="100" step="1"></label>
+      <label>Graphics <select id="sQuality"><option value="low">Low (fastest)</option><option value="medium">Medium</option><option value="high">High</option></select></label>
+      <label class="chk"><input type="checkbox" id="sVoices"> Spoken voices (text to speech)</label>
+      <label class="chk"><input type="checkbox" id="sSubs"> Subtitles</label>
+      <label class="chk"><input type="checkbox" id="sInvert"> Invert look up / down</label>
+      <label class="chk"><input type="checkbox" id="sPads"> Controllers ON</label>
+      <label class="chk"><input type="checkbox" id="sRumble"> Controller rumble</label>
+    </div>
+    <div class="row"><button data-back>Back</button></div>
+  </div>
+</div>
+
+<div id="pause" class="screen" hidden>
+  <div class="card">
+    <h2>Paused</h2>
+    <div class="menu">
+      <button id="btnResume">Resume</button>
+      <button id="btnKnow">What you know</button>
+      <button id="btnPauseSettings">Settings</button>
+      <button id="btnQuit">Quit to title</button>
+    </div>
+    <p class="small">Each morning is saved when it starts. Everything you learn, you keep.</p>
+  </div>
+</div>
+
+<div id="know" class="screen" hidden>
+  <div class="card">
+    <h2>What you know</h2>
+    <div id="knowList"></div>
+    <p class="small" id="knowCount"></p>
+    <div class="row"><button data-back>Back</button></div>
+  </div>
+</div>
+
+<div id="card" class="screen" hidden>
+  <div class="card"><div id="cardTime">7:00 AM</div><div id="cardSub"></div></div>
+</div>
+
+<div id="dead" class="screen" hidden>
+  <div class="card">
+    <div id="deadTime"></div>
+    <div id="deadTitle"></div>
+    <p id="deadLine"></p>
+    <p id="deadLearn"></p>
+    <div class="menu"><button id="btnWake">Wake up</button><button id="btnDeadTitle">Title</button></div>
+    <p class="small" id="deadCount"></p>
+  </div>
+</div>
+
+<div id="ending" class="screen solid" hidden>
+  <div class="card">
+    <div id="endTitle"></div>
+    <div id="endLines"></div>
+    <div id="endFoot"><p class="small" id="endWhich"></p><div class="row"><button id="btnEndTitle">Title</button></div></div>
+  </div>
+</div>
+
+<script src="sync.js"></script>
+<script type="module" src="js/main.js"></script>
+<script src="install.js"></script>
+</body>
+</html>
